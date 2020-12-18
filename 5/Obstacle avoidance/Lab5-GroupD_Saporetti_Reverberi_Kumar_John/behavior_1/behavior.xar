@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8" ?><ChoregrapheProject xmlns="http://www.aldebaran-robotics.com/schema/choregraphe/project.xsd" xar_version="3"><Box name="root" id="-1" localization="8" tooltip="Root box of Choregraphe&apos;s behavior. Highest level possible." x="0" y="0"><bitmap>media/images/box/root.png</bitmap><script language="4"><content><![CDATA[]]></content></script><Input name="onLoad" type="1" type_size="1" nature="0" inner="1" tooltip="Signal sent when diagram is loaded." id="1" /><Input name="onStart" type="1" type_size="1" nature="2" inner="0" tooltip="Box behavior starts when a signal is received on this input." id="2" /><Input name="onStop" type="1" type_size="1" nature="3" inner="0" tooltip="Box behavior stops when a signal is received on this input." id="3" /><Output name="onStopped" type="1" type_size="1" nature="1" inner="0" tooltip="Signal sent when box behavior is finished." id="4" /><Timeline enable="0"><BehaviorLayer name="behavior_layer1"><BehaviorKeyframe name="keyframe1" index="1"><Diagram scale="100"><Box name="smallTalk" id="1" localization="8" tooltip="" x="125" y="94"><dialogFile>../smallTalk/smallTalk.dlg</dialogFile><bitmap>media/images/box/box-dialog.png</bitmap><script language="4"><content><![CDATA[]]></content></script><Input name="onLoad" type="1" type_size="1" nature="0" inner="1" tooltip="Signal sent when diagram is loaded." id="1" /><Input name="onStart" type="1" type_size="1" nature="2" inner="0" tooltip="Box behavior starts when a signal is received on this input." id="2" /><Input name="onStop" type="1" type_size="1" nature="3" inner="0" tooltip="Box behavior stops when a signal is received on this input." id="3" /><Output name="onStopped" type="1" type_size="1" nature="1" inner="0" tooltip="Signal sent when box behavior is finished." id="4" /><Output name="X" type="3" type_size="1" nature="2" inner="0" tooltip="" id="5" /><Output name="Y" type="3" type_size="1" nature="2" inner="0" tooltip="" id="6" /><Output name="T" type="3" type_size="1" nature="2" inner="0" tooltip="" id="7" /><Output name="go" type="1" type_size="1" nature="2" inner="0" tooltip="" id="8" /></Box><Box name="Move To" id="2" localization="8" tooltip="Make the robot move to a configured point relative to its current location." x="431" y="143"><bitmap>media/images/box/movement/walk_forward.png</bitmap><script language="4"><content><![CDATA[# obstacle position
+ObstacleX=2.05
+ObstacleY=0
+# gain for obstacle avoidance
+obsGain=0
+
+class MyClass(GeneratedClass):
+    def __init__(self):
+        GeneratedClass.__init__(self, False)
+        self.motion = ALProxy("ALMotion")
+
+        self.positionErrorThresholdPos = 0.3
+        self.positionErrorThresholdAng = 0.3
+
+        # how far you can get from the obstacle
+        self.obstacleAvoidanceThreshold = 0.5
+
+        # initial robot position
+        self.myX=0
+        self.myY=0
+        self.myT=0
+
+    def onLoad(self):
+        pass
+
+    def onUnload(self):
+        self.motion.moveToward(0.0, 0.0, 0.0)
+
+    def onInput_X(self, string):
+        self.myX=int(string)
+
+    def onInput_Y(self,string):
+        self.myY=int(string)
+
+    def onInput_T(self,string):
+        self.myT=int(string)
+
+    def onInput_onStart(self):
+        import almath
+        import math
+
+        # enabling arms
+        enableArms = self.getParameter("Arms movement enabled")
+        self.motion.setMoveArmsEnabled(enableArms, enableArms)
+
+        # read init robot pos
+        initPosition = almath.Pose2D(self.motion.getRobotPosition(True))
+        # define target pos
+        targetDistance = almath.Pose2D(self.myX,self.myY,self.myT*almath.PI / 180)
+        expectedEndPosition = initPosition * targetDistance
+        # define obstacle position
+        obstacle = almath.Pose2D(ObstacleX, ObstacleY, 0)
+        obstaclePosition = initPosition * obstacle
+
+
+        currentPosition=almath.Pose2D(self.motion.getRobotPosition(True))
+        # Error robot-goal
+        positionError = currentPosition.diff(expectedEndPosition)
+        positionError.theta = almath.modulo2PI(positionError.theta)
+
+        # Error robot-obstacle
+        errorRobotObstacle = currentPosition.diff(obstaclePosition)
+
+        # Euclidean distances from target and obstacle
+        myDistance=math.sqrt(positionError.x*positionError.x+positionError.y*positionError.y)
+        myDistanceFromObs=math.sqrt(errorRobotObstacle.x*errorRobotObstacle.x + errorRobotObstacle.y*errorRobotObstacle.y)
+
+        #if myDistanceFromObs < 2*self.obstacleAvoidanceThreshold:
+        obsGain=0.5
+        #else:
+        #    obsGain=0
+
+        # Set velocity: go to goal - avoid obstacle
+        rep_f=((  (1/myDistanceFromObs)  -  (1/self.obstacleAvoidanceThreshold)  )**2) * (1/ (myDistanceFromObs**2))
+        normal_vector_y = positionError.x/(positionError.y+0.01)
+        normal_vector_x = 1
+        normal_vec = almath.Pose2D(normal_vector_x, normal_vector_y, 0)
+        #Added my part
+        totalForce = positionError - obsGain*rep_f*normal_vec
+        norm = math.sqrt(totalForce.x*totalForce.x + totalForce.y*totalForce.y)
+        vmyX = float(totalForce.x)/norm
+        vmyY = float(totalForce.y)/norm
+        vmyT = 0
+
+
+        while(abs(positionError.x)>self.positionErrorThresholdPos or      abs(positionError.y)>self.positionErrorThresholdPos) or abs((positionError.theta)>self.positionErrorThresholdAng):
+
+            # Send velocities
+            self.motion.moveToward(vmyX,vmyY,vmyT)
+
+            # Error robot-goal
+            currentPosition=almath.Pose2D(self.motion.getRobotPosition(True))
+            positionError = currentPosition.diff(expectedEndPosition)
+            positionError.theta = almath.modulo2PI(positionError.theta)
+
+            # Error robot-obstacle
+
+            errorRobotObstacle = currentPosition.diff(obstaclePosition)
+
+            # Euclidean distances from target and obstacle
+            myDistance=math.sqrt(positionError.x*positionError.x+positionError.y*positionError.y)
+            myDistanceFromObs=math.sqrt(errorRobotObstacle.x*errorRobotObstacle.x + errorRobotObstacle.y*errorRobotObstacle.y)
+
+            #if myDistanceFromObs < 2*self.obstacleAvoidanceThreshold:
+            obsGain=0.5
+            #else:
+            #    obsGain=0
+
+             # Set velocity: go to goal - avoid obstacle
+            rep_f = ((  (1/myDistanceFromObs)  -  (1/self.obstacleAvoidanceThreshold)  )**2) * (1/ (myDistanceFromObs**2))
+            normal_vector_y = (positionError.x)/(positionError.y+0.01)
+            normal_vector_x = 1
+            normal_vec = almath.Pose2D(normal_vector_x, normal_vector_y, 0)
+
+            totalForce = positionError-obsGain*rep_f*normal_vec
+            norm = math.sqrt(totalForce.x*totalForce.x + totalForce.y*totalForce.y)
+            vmyX = float(totalForce.x)/norm
+            vmyY = float(totalForce.y)/norm
+
+            if abs((positionError.theta)>self.positionErrorThresholdAng):
+                th = math.atan2(positionError.y,positionError.x)
+            else:
+                th = 0.0
+
+
+            if th > 1:
+                th = th -1
+            elif th < -1:
+                th = th +1
+            vmyT = float(th)
+        self.motion.moveToward(0.0,0.0,0.0)
+        # The move is finished so output
+        realEndPosition = almath.Pose2D(self.motion.getRobotPosition(False))
+
+    def onInput_onStop(self):
+        self.onUnload()]]></content></script><Input name="onLoad" type="1" type_size="1" nature="0" inner="1" tooltip="Signal sent when Diagram is loaded." id="1" /><Input name="onStart" type="1" type_size="1" nature="2" inner="0" tooltip="Box behavior starts when a signal is received on this input." id="2" /><Input name="onStop" type="1" type_size="1" nature="3" inner="0" tooltip="Box behavior stops when a signal is received on this input." id="3" /><Input name="X" type="3" type_size="1" nature="1" inner="0" tooltip="" id="4" /><Input name="Y" type="3" type_size="1" nature="1" inner="0" tooltip="" id="5" /><Input name="T" type="3" type_size="1" nature="1" inner="0" tooltip="" id="6" /><Output name="onArrivedAtDestination" type="1" type_size="1" nature="1" inner="0" tooltip="Signal sent when the robot arrives at its destination." id="7" /><Output name="onStoppedBeforeArriving" type="0" type_size="1" nature="1" inner="0" tooltip="Signal sent when the robot stops before arriving to its destination. Returns a vector [x (m), y (m), theta(rad)] with the remaining distance up to the destination. This distance is expressed in the ROBOT frame." id="8" /><Parameter name="Distance X (m)" inherits_from_parent="0" content_type="2" value="1" default_value="0.2" min="-5" max="10" tooltip="The distance in meters for forward/backward motion. Positive value&#x0A;means forward, negative value means backward." id="9" /><Parameter name="Distance Y (m)" inherits_from_parent="0" content_type="2" value="0" default_value="0" min="-5" max="5" tooltip="The distance in meters for lateral motion. Positive value means left, negative&#x0A;value means right." id="10" /><Parameter name="Theta (deg)" inherits_from_parent="0" content_type="2" value="2.46575" default_value="0" min="-180" max="180" tooltip="The orientation in degrees for final rotation. Positive value means anticlockwise,&#x0A;negative value means clockwise." id="11" /><Parameter name="Arms movement enabled" inherits_from_parent="0" content_type="0" value="1" default_value="1" tooltip="Enables natural motion of the arms." id="12" /><Resource name="Legs" type="Lock" timeout="0" /></Box><Link inputowner="1" indexofinput="2" outputowner="0" indexofoutput="2" /><Link inputowner="2" indexofinput="4" outputowner="1" indexofoutput="5" /><Link inputowner="2" indexofinput="5" outputowner="1" indexofoutput="6" /><Link inputowner="2" indexofinput="6" outputowner="1" indexofoutput="7" /><Link inputowner="2" indexofinput="2" outputowner="1" indexofoutput="8" /><Link inputowner="1" indexofinput="2" outputowner="2" indexofoutput="7" /><Link inputowner="1" indexofinput="2" outputowner="2" indexofoutput="8" /></Diagram></BehaviorKeyframe></BehaviorLayer></Timeline></Box></ChoregrapheProject>
