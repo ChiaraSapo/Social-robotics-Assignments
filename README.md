@@ -28,14 +28,6 @@ Content: Excel file + report.
 
 Authors: Chiara Saporetti, Chiara Terrile, Cristina Naso Rappins, Davide Piccinini.
 
-## 4
-The fourth assignment is about creating a simple interaction with Nao robot from SoftBank. 
-
-Tools: Choreographe.
-
-Content: Choreographe package with dialogs and animations.
-
-Authors: Chiara Saporetti, Gabriele Reverberi, Rohit Kumar, Nitha Elisabeth John.
 
 ## 4
 The fourth assignment is about creating a natural interaction with Nao robot from SoftBank. The focus was on showing the robot's emotions.
